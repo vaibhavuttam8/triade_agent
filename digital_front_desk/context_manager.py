@@ -1,86 +1,131 @@
-from .models import ConversationContext, ChannelInput, AgentResponse
+from .models import ConversationContext, ChannelInput, AgentResponse, PatientInfo
 from .telemetry import telemetry
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime, timedelta
+import asyncio
+import json
+import time
+
+# In-memory store for conversation contexts
+# In a production environment, this would be a database
+contexts: Dict[str, ConversationContext] = {}
 
 class ContextManager:
     def __init__(self):
-        self.contexts: Dict[str, ConversationContext] = {}
         self.context_ttl = timedelta(hours=24)  # Context time-to-live
 
-    def get_context(self, user_id: str) -> ConversationContext:
-        with telemetry.tracer.start_as_current_span("context_get") as span:
+    async def get_context(self, user_id: str) -> Optional[ConversationContext]:
+        """Retrieve the conversation context for a user"""
+        with telemetry.tracer.start_as_current_span("get_context") as span:
+            span.set_attributes({"user.id": user_id})
+            
+            if user_id in contexts:
+                return contexts[user_id]
+            return None
+    
+    async def create_or_update_context(
+        self, 
+        user_id: str, 
+        conversation_history: List[dict], 
+        metadata: dict = {},
+        patient_info: Optional[PatientInfo] = None
+    ) -> ConversationContext:
+        """Create or update the conversation context for a user"""
+        with telemetry.tracer.start_as_current_span("update_context") as span:
+            start_time = time.time()
+            
             span.set_attributes({
-                "context.user_id": user_id,
-                "context.exists": user_id in self.contexts
+                "user.id": user_id,
+                "context.history_length": len(conversation_history)
             })
             
-            if user_id not in self.contexts:
-                self.contexts[user_id] = ConversationContext(
+            # Check if the context already exists
+            if user_id in contexts:
+                # Update existing context
+                contexts[user_id].conversation_history = conversation_history
+                contexts[user_id].last_updated = datetime.now()
+                contexts[user_id].metadata.update(metadata)
+                if patient_info:
+                    contexts[user_id].patient_info = patient_info
+            else:
+                # Create new context
+                contexts[user_id] = ConversationContext(
+                    user_id=user_id,
+                    conversation_history=conversation_history,
+                    metadata=metadata,
+                    patient_info=patient_info
+                )
+            
+            # Record update time
+            telemetry.record_response_time(
+                (time.time() - start_time) * 1000,
+                "context_update"
+            )
+            
+            return contexts[user_id]
+    
+    async def append_to_history(self, user_id: str, message: dict) -> None:
+        """Append a new message to the conversation history"""
+        with telemetry.tracer.start_as_current_span("append_history") as span:
+            span.set_attributes({
+                "user.id": user_id,
+                "message.role": message.get("role", "unknown")
+            })
+            
+            # Get the current context
+            context = await self.get_context(user_id)
+            
+            if not context:
+                # Create a new context if it doesn't exist
+                context = await self.create_or_update_context(user_id, [])
+            
+            # Append the message
+            context.conversation_history.append(message)
+            context.last_updated = datetime.now()
+            
+            # Limit history size
+            if len(context.conversation_history) > 20:
+                context.conversation_history = context.conversation_history[-20:]
+            
+            # No need to call create_or_update_context as we've modified the object in-place
+    
+    async def clear_context(self, user_id: str) -> None:
+        """Clear the conversation context for a user"""
+        with telemetry.tracer.start_as_current_span("clear_context") as span:
+            span.set_attributes({"user.id": user_id})
+            
+            if user_id in contexts:
+                # Preserve patient info when clearing context
+                patient_info = contexts[user_id].patient_info
+                contexts[user_id] = ConversationContext(
                     user_id=user_id,
                     conversation_history=[],
-                    metadata={}
+                    patient_info=patient_info
                 )
-            return self.contexts[user_id]
-
-    def update_context(
-        self,
-        user_id: str,
-        channel_input: Optional[ChannelInput] = None,
-        agent_response: Optional[AgentResponse] = None
-    ):
-        with telemetry.tracer.start_as_current_span("context_update") as span:
-            context = self.get_context(user_id)
-            current_time = datetime.now()
             
-            if channel_input:
-                context.conversation_history.append({
-                    "role": "user",
-                    "content": channel_input.message,
-                    "timestamp": current_time,
-                    "channel": channel_input.channel_type
-                })
-            
-            if agent_response:
-                context.conversation_history.append({
-                    "role": "assistant",
-                    "content": agent_response.response,
-                    "timestamp": current_time,
-                    "triage_score": agent_response.triage_score,
-                    "confidence_score": agent_response.confidence_score
-                })
-            
-            context.last_updated = current_time
-            
-            # Record metrics
-            self._record_context_metrics(context)
-            
-            span.set_attributes({
-                "context.history_length": len(context.conversation_history),
-                "context.last_updated": context.last_updated.isoformat()
-            })
+            span.add_event("context_cleared")
 
     def cleanup_old_contexts(self):
-        """Remove contexts that haven't been updated within TTL"""
+        """Remove expired contexts to free up memory"""
         with telemetry.tracer.start_as_current_span("context_cleanup") as span:
             current_time = datetime.now()
             expired_contexts = [
-                user_id for user_id, context in self.contexts.items()
+                user_id for user_id, context in contexts.items()
                 if current_time - context.last_updated > self.context_ttl
             ]
             
             for user_id in expired_contexts:
-                del self.contexts[user_id]
+                del contexts[user_id]
             
             span.set_attributes({
                 "context.cleaned_count": len(expired_contexts),
-                "context.remaining_count": len(self.contexts)
+                "context.remaining_count": len(contexts)
             })
 
-    def get_context_summary(self, user_id: str) -> str:
+    async def get_context_summary(self, user_id: str) -> str:
         """Generate a summary of the conversation context"""
-        context = self.get_context(user_id)
-        if not context.conversation_history:
+        context = await self.get_context(user_id)
+        if not context or not context.conversation_history:
             return "No conversation history"
         
         last_messages = context.conversation_history[-3:]  # Get last 3 messages

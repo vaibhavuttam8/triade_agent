@@ -1,0 +1,26 @@
+version: '3'
+
+services:
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411"
+    environment:
+      - STORAGE_TYPE=mem  # Use in-memory storage for development
+    networks:
+      - tracing-network
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - zipkin
+    environment:
+      - ZIPKIN_HOST=zipkin
+    networks:
+      - tracing-network
+
+networks:
+  tracing-network:
+    driver: bridge 

@@ -1,109 +1,132 @@
-# Digital Front Desk & Triage Agent
+# Digital Front Desk with ESI Guidelines
 
-An AI-powered system designed to handle initial patient inquiries across multiple channels, implement smart triage logic, and efficiently route urgent cases. The system integrates OpenAI's GPT models for intelligent responses and OpenTelemetry for comprehensive monitoring and observability.
+A medical triage system that uses AI to assess patient symptoms and provide appropriate guidance based on the Emergency Severity Index (ESI) triage algorithm.
 
 ## Features
 
-- Multi-channel support (Phone, Chat, Web Portal)
-- Intelligent triage system with urgency assessment
-- Automated response generation for common inquiries
-- Priority-based queue management
-- Conversation context management
-- Comprehensive telemetry and monitoring
-- RESTful API interface
+- **AI-powered triage**: Assesses patient symptoms and determines appropriate ESI level
+- **ESI Guidelines Integration**: Automatically references ESI guidelines from PDF documentation
+- **Vector Search**: Uses FAISS to quickly find relevant information for patient symptoms
+- **Multilevel Triage**: Categorizes patients into ESI levels 1-5
+- **Queue Management**: Prioritizes patients based on urgency
+- **Context Management**: Maintains conversation history for better assistance
 
-## Requirements
+## Setup
 
-- Python 3.8+
-- OpenAI API key
-- OpenTelemetry collector (for metrics and tracing)
+1. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
-## Installation
+2. Set environment variables:
+   ```
+   OPENAI_API_KEY=your_openai_api_key
+   ESI_GUIDELINES_PATH=/path/to/esi_guidelines.pdf
+   ```
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/digital-front-desk.git
-cd digital-front-desk
-```
+3. Run the application:
+   ```
+   python -m digital_front_desk
+   ```
 
-2. Install dependencies:
+## ESI Guidelines Integration
+
+The system uses a PDF document containing ESI guidelines as a knowledge base:
+
+1. **PDF Processing**: The document is processed at startup, extracting text and organizing it by headings
+2. **Vector Embeddings**: Text is converted to numerical vectors using SentenceTransformer
+3. **Fast Retrieval**: When a patient describes symptoms, the system quickly finds relevant guidelines
+4. **AI Enhancement**: The found guidelines are provided to the AI to inform its response
+
+## Emergency Severity Index (ESI) Levels
+
+- **Level 1**: Immediate life-saving intervention required
+  - Examples: Cardiac arrest, respiratory arrest, severe shock
+  
+- **Level 2**: High-risk situation or severe pain/distress
+  - Examples: Chest pain, difficulty breathing, altered mental status
+  
+- **Level 3**: Multiple resources needed but stable condition
+  - Examples: Abdominal pain requiring labs and imaging, fractures
+  
+- **Level 4**: One resource needed
+  - Examples: Simple laceration, sprain, minor infection
+  
+- **Level 5**: No resources needed, lowest urgency
+  - Examples: Minor cold symptoms, simple rash, medication refill
+
+## System Components
+
+- **Multi-Channel Interface**: Web Portal, Chat, Phone
+- **AgentGPT Integration**: Processes initial inquiries and provides automated responses
+- **Triage & Routing Engine**: Assesses patient symptoms and determines urgency
+- **Conversation Context Management**: Maintains patient conversation history
+- **Queue Management System**: Prioritizes cases based on medical urgency
+- **Open Telemetry Integration**: Collects and analyzes performance metrics
+
+## Project Structure
+
+The project consists of two main components:
+
+1. **Backend (digital_front_desk)**: A FastAPI application that handles inquiries, performs triage, and manages patient information
+2. **Frontend (frontend)**: A React application that provides the web interface for patients
+
+## Setup and Installation
+
+### Backend
+
+1. Install the required Python packages:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your OpenAI API key:
+2. Run the FastAPI server:
+
 ```bash
-OPENAI_API_KEY=your_api_key_here
+cd digital_front_desk
+python -m uvicorn __main__:app --reload --port 8000
 ```
+
+### Frontend
+
+1. Install the required npm packages:
+
+```bash
+cd frontend
+npm install
+```
+
+2. Run the React development server:
+
+```bash
+npm start
+```
+
+This will start the frontend on http://localhost:3000.
 
 ## Usage
 
-1. Start the service:
-```bash
-python -m digital_front_desk
-```
+1. Register an account on the web portal
+2. Provide your basic health information (age, sex, allergies, etc.)
+3. Describe your symptoms in the chat interface
+4. The system will assess your symptoms, determine urgency, and provide appropriate guidance
 
-2. The API will be available at `http://localhost:8000`
+## Security and Privacy
 
-## API Endpoints
+- User authentication is implemented using JWT tokens
+- Patient information is kept confidential and is only used for healthcare purposes
+- The system complies with healthcare data protection regulations
 
-### Process Patient Inquiry
-```
-POST /inquiries
-```
-Process a new patient inquiry through any supported channel.
+## Monitoring and Telemetry
 
-### Queue Management
-```
-GET /queue/status
-POST /queue/next
-DELETE /queue/{user_id}
-```
-Manage the patient queue and retrieve queue status.
+The application uses Open Telemetry for monitoring and observability, tracking:
 
-### Context Management
-```
-GET /context/{user_id}
-```
-Retrieve conversation context for a specific user.
-
-## Monitoring
-
-The system uses OpenTelemetry for monitoring and observability. Key metrics include:
-
-- Request processing times
-- Queue sizes and wait times
-- Triage scores distribution
-- AI model performance
-- Conversation context statistics
-
-## Configuration
-
-The system can be configured through environment variables:
-
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `OTLP_ENDPOINT`: OpenTelemetry collector endpoint
-- `MODEL_NAME`: GPT model to use (default: gpt-4-turbo-preview)
-- `PORT`: Server port (default: 8000)
-
-## Architecture
-
-The system consists of several key components:
-
-1. **Agent Processor**: Coordinates AI responses and triage decisions
-2. **Triage Engine**: Assesses urgency and routes cases
-3. **Queue Manager**: Handles priority-based queuing
-4. **Context Manager**: Maintains conversation history
-5. **Telemetry Manager**: Handles monitoring and metrics
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+- Response times
+- Triage decisions
+- Queue metrics
+- System health
 
 ## License
 
-MIT License 
+This project is licensed under the MIT License - see the LICENSE file for details. 

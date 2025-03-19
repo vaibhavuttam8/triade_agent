@@ -3,7 +3,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.zipkin.json import ZipkinExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource
 from typing import Optional
@@ -24,10 +24,12 @@ class TelemetryManager:
             "service.version": "1.0.0"
         })
 
-        # Set up tracing
+        # Set up tracing with Zipkin
         trace_provider = TracerProvider(resource=resource)
-        otlp_trace_exporter = OTLPSpanExporter(endpoint="http://localhost:4317")
-        trace_provider.add_span_processor(BatchSpanProcessor(otlp_trace_exporter))
+        zipkin_exporter = ZipkinExporter(
+            endpoint="http://localhost:9411/api/v2/spans",
+        )
+        trace_provider.add_span_processor(BatchSpanProcessor(zipkin_exporter))
         trace.set_tracer_provider(trace_provider)
         self.tracer = trace.get_tracer(__name__)
 
